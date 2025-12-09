@@ -1,8 +1,13 @@
 from rest_framework import generics, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.models import User
 from django.db.models import Sum
-from datetime import datetime
+from django.db import IntegrityError
+from rest_framework.exceptions import ValidationError
 
 from .models import Category, Transaction, Budget, Goal
 from .serializers import (
@@ -12,8 +17,65 @@ from .serializers import (
     GoalSerializer
 )
 
+# =============================
+# AUTH
+# =============================
 
-# category
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get("username")
+        email = request.data.get("email")
+        password = request.data.get("password")
+
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Username already exists"}, status=400)
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password
+        )
+
+        # Create tokens
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "username": user.username,
+            "message": "User registered successfully"
+        }, status=201)
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = User.objects.filter(username=username).first()
+
+        if user is None:
+            return Response({"error": "Invalid username"}, status=400)
+
+        if not user.check_password(password):
+            return Response({"error": "Invalid password"}, status=400)
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "username": user.username
+        })
+
+
+# =============================
+# CATEGORY
+# =============================
 
 class CategoryListCreate(generics.ListCreateAPIView):
     queryset = Category.objects.all()
@@ -27,14 +89,18 @@ class CategoryDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 
-# transaction
+# =============================
+# TRANSACTION
+# =============================
 
 class TransactionListCreate(generics.ListCreateAPIView):
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Transaction.objects.filter(user=self.request.user).order_by('-date')
+        return Transaction.objects.filter(
+            user=self.request.user
+        ).order_by('-date')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -48,7 +114,10 @@ class TransactionDetail(generics.RetrieveUpdateDestroyAPIView):
         return Transaction.objects.filter(user=self.request.user)
 
 
-# budget
+# =============================
+# BUDGET
+# =============================
+
 class BudgetListCreate(generics.ListCreateAPIView):
     serializer_class = BudgetSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -57,8 +126,12 @@ class BudgetListCreate(generics.ListCreateAPIView):
         return Budget.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
+        try:
+            serializer.save(user=self.request.user)
+        except IntegrityError:
+            raise ValidationError(
+                {"error": "Budget for this category and month already exists."}
+            )
 
 class BudgetDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = BudgetSerializer
@@ -68,7 +141,10 @@ class BudgetDetail(generics.RetrieveUpdateDestroyAPIView):
         return Budget.objects.filter(user=self.request.user)
 
 
-# goal
+# =============================
+# GOALS
+# =============================
+
 class GoalListCreate(generics.ListCreateAPIView):
     serializer_class = GoalSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -88,8 +164,9 @@ class GoalDetail(generics.RetrieveUpdateDestroyAPIView):
         return Goal.objects.filter(user=self.request.user)
 
 
-# dashbord
-
+# =============================
+# DASHBOARD SUMMARY
+# =============================
 
 class MonthlySummary(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -110,8 +187,8 @@ class MonthlySummary(APIView):
             date__year=year
         )
 
-        total_income = transactions.filter(type="income").aggregate(Sum("amount"))["amount__sum"] or 0
-        total_expense = transactions.filter(type="expense").aggregate(Sum("amount"))["amount__sum"] or 0
+        total_income = transactions.filter(type="income").aggregate(total=Sum("amount"))["total"] or 0
+        total_expense = transactions.filter(type="expense").aggregate(total=Sum("amount"))["total"] or 0
 
         balance = total_income - total_expense
 
@@ -119,4 +196,39 @@ class MonthlySummary(APIView):
             "total_income": total_income,
             "total_expense": total_expense,
             "balance": balance
+        })
+
+
+# =============================
+# CREATE DEFAULT CATEGORIES
+# =============================
+
+class CreateDefaultCategories(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        default_categories = [
+            ("Salary", "income"), ("Bonus", "income"), ("Gift", "income"),
+            ("Refund", "income"), ("Investment", "income"), ("Business", "income"),
+            ("Food", "expense"), ("Groceries", "expense"), ("Coffee", "expense"),
+            ("Restaurants", "expense"), ("Shopping", "expense"), ("Clothes", "expense"),
+            ("Entertainment", "expense"), ("Movies", "expense"), ("Travel", "expense"),
+            ("Transport", "expense"), ("Fuel", "expense"), ("Car Repair", "expense"),
+            ("Health", "expense"), ("Pharmacy", "expense"), ("Gym", "expense"),
+            ("Beauty", "expense"), ("Hairdresser", "expense"), ("Home", "expense"),
+            ("Rent", "expense"), ("Electricity", "expense"), ("Water", "expense"),
+            ("Internet", "expense"), ("Phone", "expense"), ("Pets", "expense"),
+            ("Kids", "expense"), ("Education", "expense"),
+        ]
+
+        created = 0
+
+        for name, ctype in default_categories:
+            obj, was_created = Category.objects.get_or_create(name=name, type=ctype)
+            if was_created:
+                created += 1
+
+        return Response({
+            "message": "Default categories created",
+            "created_count": created
         })

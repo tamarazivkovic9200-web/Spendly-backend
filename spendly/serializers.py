@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Category, Transaction, Budget, Goal
+from django.db.models import Sum
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -20,11 +21,24 @@ class TransactionSerializer(serializers.ModelSerializer):
 
 class BudgetSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    spent_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Budget
         fields = '__all__'
         read_only_fields = ['user']
+
+    def get_spent_amount(self, obj):
+        # Izračunaj koliko je korisnik potrošio u toj kategoriji u tom mjesecu
+        total = Transaction.objects.filter(
+            user=obj.user,
+            category=obj.category,
+            date__month=obj.month,
+            date__year=obj.year,
+            type="expense"
+        ).aggregate(Sum("amount"))["amount__sum"]
+
+        return total or 0
 
 
 class GoalSerializer(serializers.ModelSerializer):
