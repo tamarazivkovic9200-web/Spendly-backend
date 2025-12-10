@@ -1,0 +1,25 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+asgiref = "==3.11.0"
+django = "==5.2.9"
+django-cors-headers = "==4.9.0"
+djangorestframework = "==3.16.1"
+djangorestframework-simplejwt = "==5.5.1"
+pillow = "==12.0.0"
+pyjwt = "==2.10.1"
+sqlparse = "==0.5.4"
+gunicorn = "*"
+whitenoise = "*"
+dj-database-url = "*"
+python-dotenv = "*"
+django-storages = "*"
+boto3 = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"

@@ -7,7 +7,8 @@ from .views import (
     GoalListCreate, GoalDetail,
     MonthlySummary,
     RegisterView, LoginView,
-    CreateDefaultCategories,
+    CreateDefaultCategories,IncomeSettingDetail,UserSettingsView,ChangePasswordView,
+    DeleteAccountView,
 )
 
 urlpatterns = [
@@ -37,4 +38,14 @@ urlpatterns = [
     path("auth/register/", RegisterView.as_view()),
     path("auth/login/", LoginView.as_view()),
     path("auth/refresh/", TokenRefreshView.as_view()),
+
+    # Income 
+    path('income/', IncomeSettingDetail.as_view(), name='income-setting'),
+
+    #user settings
+    path("settings/", UserSettingsView.as_view(), name="user-settings"),
+    path("settings/password/", ChangePasswordView.as_view(), name="change-password"),
+    path("settings/delete/", DeleteAccountView.as_view(), name="delete-account"),
+
+
 ]

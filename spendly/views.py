@@ -8,6 +8,9 @@ from django.contrib.auth.models import User
 from django.db.models import Sum
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
+from .serializers import IncomeSettingSerializer
+from .models import IncomeSetting
+from .serializers import UserSettingsSerializer
 
 from .models import Category, Transaction, Budget, Goal
 from .serializers import (
@@ -232,3 +235,59 @@ class CreateDefaultCategories(APIView):
             "message": "Default categories created",
             "created_count": created
         })
+
+
+class IncomeSettingDetail(generics.RetrieveUpdateAPIView):
+    serializer_class = IncomeSettingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        obj, created = IncomeSetting.objects.get_or_create(user=self.request.user)
+        return obj
+
+
+class UserSettingsView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserSettingsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+    def update(self, request, *args, **kwargs):
+        print("\n===== PUT DATA =====")
+        print(request.data)
+        print("===== END DATA =====\n")
+        return super().update(request, *args, **kwargs)
+
+
+# =============================
+# CHANGE PASSWORD
+# =============================
+
+class ChangePasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request):
+        new_password = request.data.get("new_password")
+
+        if not new_password:
+            return Response({"error": "New password is required"}, status=400)
+
+        user = request.user
+        user.set_password(new_password)
+        user.save()
+
+        return Response({"message": "Password updated successfully"})
+
+
+# =============================
+# DELETE ACCOUNT
+# =============================
+
+class DeleteAccountView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        user.delete()
+        return Response({"message": "Account deleted"}, status=204)
